@@ -1,0 +1,163 @@
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+package cookiework.encryptedvideoview.encryption;
+import android.content.Context;
+
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import org.spongycastle.asn1.x9.X9ECParameters;
+import org.spongycastle.jcajce.provider.asymmetric.util.ECUtil;
+import org.spongycastle.math.ec.ECPoint;
+import org.spongycastle.util.Integers;
+import org.spongycastle.util.encoders.UrlBase64;
+
+import cookiework.encryptedvideoview.util.DBHelper;
+import cookiework.encryptedvideoview.util.ViewerTag;
+
+import static cookiework.encryptedvideoview.Constants.ECCURVE_NAME;
+
+/**
+ *
+ * @author Andrew
+ *
+ * This class is designed encapsulate methods that are used in the subscription process.
+ * Subscribe, Approve and Finalize.  It uses the methods from PtwittEnc to accomplish
+ * this task and provide the Firefox extension an simplier way to do different subscription methods.
+ */
+public class SubscriptionProcessor {
+
+    private PtWittEnc enc;
+    private DBHelper dbHelper;
+
+    public PtWittEnc getEnc() {
+        return enc;
+    }
+
+    //Constructor generates random 'r' value from a using the java secruity secure random class with specified number of bits
+    public SubscriptionProcessor(Context context)
+    {
+        this.enc = new PtWittEnc(context);
+        this.dbHelper = new DBHelper(context);
+    }
+
+    //This method prepares a subscription request and takes input for e, N and the tag value
+    //and returns the ‘M’ value that is later sent to the destination client for approval.
+    public ECPoint generateRequest(ECPoint q, ECPoint g, String tag, BigInteger r)
+    {
+        ////////////////////////////////////////////////////////////////
+        /////////////////         PART ONE   ///////////////////////////
+        //Do the Following Action: M = Sha1(Tag) * ((r^e) mod N) mod N//
+        ////////////////////////////////////////////////////////////////
+
+        ECPoint M = null;
+
+        try
+        {
+
+        MessageDigest digest = MessageDigest.getInstance("SHA1");
+        digest.update(tag.getBytes());
+        byte[] result = digest.digest();
+        BigInteger sha1Final = new BigInteger(1, result); //SHA1 Portion
+
+        ECPoint hashPt = g.multiply(sha1Final);
+        ECPoint rPt = q.multiply(r);
+        M = hashPt.add(rPt);
+        }
+        catch(Exception ex)
+        {
+            ex.printStackTrace();
+        }
+        return M;
+    }
+
+    //This method is a helper function that allows generateRequest to be called
+    //using string values instead of BigInteger
+    public String getRequestString(String destPkPointStr, String tag, String rStr)
+    {
+        byte[] destPkPointByte = UrlBase64.decode(destPkPointStr);
+        BigInteger r = new BigInteger(rStr);
+
+        X9ECParameters curveParameters = ECUtil.getNamedCurveByName(ECCURVE_NAME);
+        ECPoint g = curveParameters.getG();
+        ECPoint q = curveParameters.getCurve().decodePoint(destPkPointByte);
+        
+        ECPoint M = generateRequest(q, g, tag, r);
+        String mStr = new String(UrlBase64.encode(M.getEncoded(true)));
+        return mStr;
+    }
+
+    //Generates an approval value of M' using the subscription recipients d, M and N
+    public ECPoint generateResponse(BigInteger d, ECPoint M, BigInteger N)
+    {
+        ////////////////////////////////////////////////////////////////
+        /////////////////         PART TWO   ///////////////////////////
+        //Do the Following Action: M' = (M^d) mod N/////////////////////
+        ////////////////////////////////////////////////////////////////
+        BigInteger dReverse = d.modPow(new BigInteger("-1"), N);
+        ECPoint mPrime = M.multiply(dReverse);
+
+        return mPrime;
+    }
+
+    //This method is a helper function that allow getResponse to be called using string values instead of BigInteger
+    public String getResponseString(String dStr, String MStr, String curveStr)
+    {
+        String mPrimeStr = "";
+
+        try
+        {
+            BigInteger d =  new BigInteger(dStr);
+            byte[] curveByte = UrlBase64.decode(curveStr);
+            byte[] mByte = UrlBase64.decode(MStr);
+            X9ECParameters curveParameters = X9ECParameters.getInstance(curveByte);
+            BigInteger N = curveParameters.getN();
+            ECPoint M = curveParameters.getCurve().decodePoint(mByte);
+            ECPoint mPrime = generateResponse(d, M, N);
+            mPrimeStr = new String(UrlBase64.encode(mPrime.getEncoded(true)));
+        }
+        catch(Exception e)
+        {
+            e.printStackTrace();
+        }
+
+        return mPrimeStr;
+    }
+
+    //This method does the finalize action, after a subscription is approved the initial user
+    //will finalize the subscription.
+    public String processResponse(ECPoint mPrime, BigInteger R, ECPoint G, int id)
+    {
+        ////////////////////////////////////////////////////////////////
+        /////////////////         PART THREE   /////////////////////////
+        //Do the Following Action: T* = MD5(((m'/R) mod N) || '1') /////
+        ////////////////////////////////////////////////////////////////
+        ECPoint rG = G.multiply(R);
+        ECPoint sigmaPoint = mPrime.subtract(rG);
+        BigInteger sigma = sigmaPoint.normalize().getXCoord().toBigInteger();
+        sigmaToFile(sigma, id);
+        byte[] temp = sigma.toByteArray();
+        return enc.createTStar(temp);
+    }
+
+    //This is a helper function that allows process response to be called with String instead of BigInteger
+    public String processResponseString(String mPrimeStr, String RStr, int id)
+    {
+        byte[] mPrimeByte = UrlBase64.decode(mPrimeStr);
+        X9ECParameters curveParameters = ECUtil.getNamedCurveByName(ECCURVE_NAME);
+        ECPoint mPrime = curveParameters.getCurve().decodePoint(mPrimeByte);
+        BigInteger R = new BigInteger(RStr);
+        ECPoint g = curveParameters.getG();
+
+        return processResponse(mPrime, R, g, id);
+    }
+
+    public void sigmaToFile(BigInteger sigma, int id)
+    {
+        ViewerTag tag = dbHelper.getTagItem(id);
+        tag.setSigma(sigma.toString());
+        dbHelper.updateTagItem(tag);
+    }
+}

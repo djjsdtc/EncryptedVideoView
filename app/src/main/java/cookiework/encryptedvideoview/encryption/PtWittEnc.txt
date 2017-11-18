@@ -1,0 +1,308 @@
+/*
+ * To change this template, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package cookiework.encryptedvideoview.encryption;
+
+import android.content.Context;
+
+import org.spongycastle.asn1.x9.X9ECParameters;
+import org.spongycastle.crypto.digests.MD5Digest;
+import org.spongycastle.jcajce.provider.asymmetric.util.EC5Util;
+import org.spongycastle.jcajce.provider.asymmetric.util.ECUtil;
+import org.spongycastle.jce.interfaces.ECPrivateKey;
+import org.spongycastle.jce.interfaces.ECPublicKey;
+import org.spongycastle.jce.provider.BouncyCastleProvider;
+import org.spongycastle.jce.spec.ECPrivateKeySpec;
+import org.spongycastle.jce.spec.ECPublicKeySpec;
+import org.spongycastle.math.ec.ECPoint;
+import org.spongycastle.util.Integers;
+import org.spongycastle.util.encoders.UrlBase64;
+
+import java.io.BufferedInputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.math.BigInteger;
+import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.MessageDigest;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.SecureRandom;
+import java.security.Security;
+import java.security.spec.ECParameterSpec;
+import java.util.ArrayList;
+
+import javax.crypto.Cipher;
+import javax.crypto.spec.SecretKeySpec;
+
+import cookiework.encryptedvideoview.util.DBHelper;
+import cookiework.encryptedvideoview.util.ViewerTag;
+
+import static cookiework.encryptedvideoview.Constants.ECCURVE_NAME;
+
+/**
+ * @author Andrew This class it the main workhorse that does all encryption,
+ *         decryption and key management. It provides tools to Subscription Processor as
+ *         well as being directly accessed by the Firefox extension to encode/decode
+ *         messages.
+ *         <p>
+ *         Message encryption is defined as:
+ *         <p>
+ *         (message, t) → (ct, t*)
+ *         <p>
+ *         temp = Sha1-hash[RSA-Signature(message)] k = MD5(temp || 0) ct =
+ *         AES_ENCk(message)
+ *         <p>
+ *         send (ct, t*) to database to recover search on t*
+ *         <p>
+ *         Message decryption is defined as:
+ *         <p>
+ *         (ct, t*) → (message, t)
+ *         <p>
+ *         t* = MD5(temp || 1) k = MD5(temp || 0) message = AES_DECk(ct)
+ */
+public class PtWittEnc {
+
+    public final DBHelper dbHelper;
+
+    //constructs object nothing special
+    public PtWittEnc(Context context) {
+        Security.insertProviderAt(new BouncyCastleProvider(), 1);
+        this.dbHelper = new DBHelper(context);
+    }
+
+    //Performs an MD5 hash with a 0 appended to the end of the input value.
+    //this method is used during the message encryption to generate the K value
+    //that is used for the AES encryption
+    public byte[] hashMD5(byte[] input) {
+        byte[] input2 = appendBytes(input, "0".getBytes());
+
+        MD5Digest md5 = new MD5Digest();
+        md5.update(input2, 0, input2.length);
+
+        byte[] digest = new byte[md5.getDigestSize()];
+        md5.doFinal(digest, 0);
+
+        return digest;
+
+    }
+
+    //Does AES encryption on plain text using the provided key, this method uses
+    //Bouncycastle as a provider and uses the "AES/ECB/PKCS7Padding" cipher instance
+    //It returns a base64 encoded string of the ciphertext for more compact storage
+    //in the database.
+    public String encryptAES(String plainText, byte[] key) {
+        byte[] input = plainText.getBytes();
+        byte[] cipherText = null;
+        SecretKeySpec secretKey = new SecretKeySpec(key, "AES");
+
+        try {
+            Cipher ci = Cipher.getInstance("AES/ECB/PKCS7Padding", "SC");
+            ci.init(Cipher.ENCRYPT_MODE, secretKey);
+
+            cipherText = new byte[ci.getOutputSize(input.length)];
+            int ctLength = ci.update(input, 0, input.length, cipherText, 0);
+            ci.doFinal(cipherText, ctLength);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        //return toHexCharArray(cipherText).toString();
+        return new String(UrlBase64.encode(cipherText));
+    }
+
+    //This creates the T* value which is a common step during the encryption
+    //decryption and subscription processes it is simply MD5(Temp || 1)
+    public String createTStar(byte[] temp) {
+        byte[] temp2 = appendBytes(temp, "1".getBytes());
+
+        return new String(UrlBase64.encode(hashMD5(temp2)));
+    }
+
+    //helper function
+    public byte[] appendBytes(byte[] temp, byte[] zeroOrOne) {
+        byte[] temp2 = new byte[temp.length + zeroOrOne.length];
+        System.arraycopy(temp, 0, temp2, 0, temp.length);
+        System.arraycopy(zeroOrOne, 0, temp2, zeroOrOne.length, zeroOrOne.length);
+
+        return temp2;
+    }
+
+    //Decrypts the cipher text into plain text using bouncycastle as the provider
+    //and using the AES/ECB/PKCS7Padding cipher instance.
+    public String decryptAES(String text, byte[] key) {
+        byte[] cipherText = null;
+        try {
+            cipherText = UrlBase64.decode(text);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return e.toString();
+        }
+
+
+        SecretKeySpec secretKey = new SecretKeySpec(key, "AES");
+        int ctLength = cipherText.length;
+        ;
+        byte[] pt = null;
+        try {
+            Cipher ci = Cipher.getInstance("AES/ECB/PKCS7Padding", "SC");
+            ci.init(Cipher.DECRYPT_MODE, secretKey);
+            //pt = new byte[ci.getOutputSize(ctLength)];
+            //int ptLength = ci.update(cipherText, 0, ctLength, pt, 0);
+            //ptLength += ci.doFinal(pt, ptLength);
+            pt = ci.doFinal(cipherText);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return e.toString();
+        }
+
+        return new String(pt);
+    }
+
+    //This method is used when sending a message, it uses the encryptAES method
+    //and returns a plaintext and tStar in an array.
+    public String[] send(String tag, String plainText, String dStr) {
+        X9ECParameters curveParameters = ECUtil.getNamedCurveByName(ECCURVE_NAME);
+        ECPoint g = curveParameters.getG();
+        BigInteger N = curveParameters.getN();
+        BigInteger d = new BigInteger(dStr);
+        BigInteger dReverse = d.modPow(new BigInteger("-1"), N);
+        ArrayList<String> output = new ArrayList<>();
+        try {
+            SecureRandom random = SecureRandom.getInstance("SHA1PRNG");
+            byte[] k = new byte[16];
+            random.nextBytes(k);
+            String cipherText = encryptAES(plainText, k);
+            String key = new String(UrlBase64.encode(k));
+            output.add(cipherText);
+            output.add(key);
+            String[] tags = tag.split(" ");
+            for (int i = 0; i < tags.length; i++) {
+                byte[] temp = createTemp(dReverse, g, tags[i]);
+                String encKey = encryptAES(key, hashMD5(temp));
+                String tStar = createTStar(temp);
+                output.add(encKey);
+                output.add(tStar);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return output.toArray(new String[0]);
+    }
+
+    //This method creates the 'temp' value which is defeind as SHA1(RSA-Signature(message))
+    private byte[] createTemp(BigInteger dReverse, ECPoint g, String tag) {
+        byte[] temp = null;
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA1");
+            digest.update(tag.getBytes());
+            byte[] result = digest.digest();
+            BigInteger sha1Final = new BigInteger(1, result);
+
+            ECPoint hashPt = g.multiply(sha1Final);
+            ECPoint mPrime = hashPt.multiply(dReverse);
+            BigInteger sigma = mPrime.normalize().getXCoord().toBigInteger();
+            temp = sigma.toByteArray();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return temp;
+    }
+
+    //This method decrypts the AES encrypted key with a given tag
+    //key=Dec(H1(temp), encKey)
+    public String decryptStoredKey(String encKey, String sigma) {
+        BigInteger sigmaTemp = new BigInteger(sigma);
+        byte[] temp = sigmaTemp.toByteArray();
+        byte[] key = hashMD5(temp);
+
+        String result = "";
+        result = decryptAES(encKey, key);
+        result = result.replaceAll("\uFFFD", "");
+        result = result.replaceAll("\u0000", "");    //???
+
+        System.out.println(result);
+        return result;
+    }
+
+    //This method decrypts the AES encrypted message with a given key
+    //plainText=Dec(key,cipherText)
+    public String decryptStoredMessage(String plainText, String key) {
+        System.out.println(key);
+        String result = "";
+        try {
+            byte[] keyByte = UrlBase64.decode(key);
+            result = decryptAES(plainText, keyByte);
+            result = result.replaceAll("\uFFFD", "");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return result;
+    }
+
+    public BigInteger generateR() {
+        SecureRandom rGenerator;
+        byte[] rBytes;
+        BigInteger r = null;
+
+        try {
+            rGenerator = SecureRandom.getInstance("SHA1PRNG");
+            rBytes = new byte[128];
+
+            rGenerator.nextBytes(rBytes);
+            r = new BigInteger(1, rBytes);
+        } catch (Exception ex) {
+            System.out.println(ex);
+        }
+        return r;
+    }
+
+    public String getRasString() {
+        return generateR().toString();
+    }
+
+    public String getSubscriptionRand(int id) throws Exception {
+        ViewerTag tag = dbHelper.getTagItem(id);
+        return tag.getR();
+    }
+
+    public String retrieveSigma(String id, String basePath) throws Exception {
+        BigInteger sigma = null;
+        basePath = basePath.replaceAll("[\n\r]", "");
+        FileInputStream inputRands = new FileInputStream(basePath + "\\sigma" + id + ".key");
+        ObjectInputStream sigmaStream = new ObjectInputStream(new BufferedInputStream(inputRands));
+        sigma = (BigInteger) sigmaStream.readObject();
+        sigmaStream.close();
+        return sigma.toString();
+    }
+
+    public static String hashPw(String pass) {
+        try {
+            byte[] passbytes = pass.getBytes();
+            MessageDigest mdigest = MessageDigest.getInstance("MD5");
+            mdigest.update(passbytes);
+            byte hashBytes[] = mdigest.digest();
+            StringBuffer sbuffer = new StringBuffer();
+            for (int i = 0; i < hashBytes.length; i++) {
+                String temp = Integer.toHexString(0xff & hashBytes[i]);
+                if (temp.length() == 1)
+                    sbuffer.append('0');
+                sbuffer.append(temp);
+            }
+
+            pass = sbuffer.toString();
+            String[] result = null;
+        } catch (Exception e) {
+            return pass;
+        }
+
+        return pass;
+    }
+}

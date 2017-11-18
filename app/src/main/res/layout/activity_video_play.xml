@@ -1,0 +1,182 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    android:gravity="center"
+    android:orientation="horizontal">
+
+    <RelativeLayout
+        android:id="@+id/course_surfaceview_layout__md"
+        style="@style/width_height_fw">
+
+        <cookiework.encryptedvideoview.VideoPlayView
+            android:id="@+id/course_custom_videoplay"
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent"
+            android:layout_centerHorizontal="true"
+            android:layout_centerVertical="true" />
+
+        <RelativeLayout
+            android:id="@+id/course_surfaceview_layout_loadinglogo"
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent"
+            android:background="#000000"
+            android:visibility="visible">
+
+            <ImageView
+                android:id="@+id/course_surfaceview_imageview_loadinglogo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerInParent="true"
+                android:src="@mipmap/ic_launcher" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/course_surfaceview_imageview_loadinglogo"
+                android:layout_centerHorizontal="true"
+                android:layout_margin="10dp"
+                android:orientation="horizontal">
+
+                <ProgressBar
+                    style="@android:style/Widget.ProgressBar.Small"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="5dp" />
+            </LinearLayout>
+        </RelativeLayout>
+
+        <RelativeLayout
+            android:id="@+id/gesture_volume_layout"
+            android:layout_width="120dip"
+            android:layout_height="120dip"
+            android:layout_centerInParent="true"
+            android:background="@drawable/souhu_player_gesture_bg"
+            android:gravity="center"
+            android:visibility="invisible">
+
+            <ImageView
+                android:id="@+id/gesture_iv_player_volume"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerHorizontal="true"
+                android:src="@drawable/souhu_player_volume" />
+
+            <TextView
+                android:id="@+id/geture_tv_volume_percentage"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/gesture_iv_player_volume"
+                android:layout_centerHorizontal="true"
+                android:gravity="right"
+                android:text="80%"
+                android:textColor="#ffececec" />
+        </RelativeLayout>
+
+        <RelativeLayout
+            android:id="@+id/gesture_progress_layout"
+            android:layout_width="120dip"
+            android:layout_height="80dip"
+            android:layout_centerInParent="true"
+            android:background="@drawable/souhu_player_gesture_bg"
+            android:gravity="center"
+            android:visibility="invisible">
+
+            <ImageView
+                android:id="@+id/gesture_iv_progress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerHorizontal="true"
+                android:src="@drawable/souhu_player_backward" />
+
+            <TextView
+                android:id="@+id/geture_tv_progress_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/gesture_iv_progress"
+                android:layout_centerHorizontal="true"
+                android:gravity="right"
+                android:text="00:35/24:89"
+                android:textColor="#ffececec" />
+        </RelativeLayout>
+
+        <RelativeLayout
+            android:id="@+id/course_surfaceview_layout_title"
+            style="@style/width_height_fw"
+            android:layout_alignParentLeft="true"
+            android:layout_alignTop="@+id/course_custom_videoplay"
+            android:background="@drawable/video_vertical_screen_bg"
+            android:gravity="top">
+
+            <Button
+                android:id="@+id/course_button_time_back"
+                style="@style/width_height_ww"
+                android:layout_alignParentLeft="true"
+                android:layout_alignParentTop="true"
+                android:layout_marginLeft="10dp"
+                android:background="@drawable/video_tab_back_off" />
+
+            <TextView
+                android:id="@+id/course_textView_time_coursename"
+                style="@style/width_height_ww"
+                android:layout_alignBaseline="@+id/course_button_time_back"
+                android:layout_alignBottom="@+id/course_button_time_back"
+                android:layout_centerHorizontal="true"
+                android:singleLine="true"
+                android:text="@string/app_name"
+                android:textColor="#FFFFFF" />
+        </RelativeLayout>
+
+        <RelativeLayout
+            android:id="@+id/course_surfaceview_layout_controls"
+            style="@style/width_height_fw"
+            android:layout_alignBottom="@+id/course_custom_videoplay"
+            android:layout_alignParentLeft="true"
+            android:background="@drawable/video_vertical_screen_bg"
+            android:gravity="bottom">
+
+            <Button
+                android:id="@+id/course_surfaceview_button_start"
+                style="@style/width_height_ww"
+                android:layout_alignParentLeft="true"
+                android:layout_alignParentTop="true"
+                android:layout_marginLeft="10dp"
+                android:background="@drawable/video_pauseer" />
+
+            <TextView
+                android:id="@+id/course_textView_time_start"
+                style="@style/width_height_ww"
+                android:layout_alignBaseline="@+id/course_surfaceview_button_start"
+                android:layout_alignBottom="@+id/course_surfaceview_button_start"
+                android:layout_marginLeft="10dp"
+                android:layout_toRightOf="@+id/course_surfaceview_button_start"
+                android:text="00:00"
+                android:textColor="#FFFFFF" />
+
+            <SeekBar
+                android:id="@+id/course_skbProgress"
+                style="@style/ProgressBar_Mini"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_centerVertical="true"
+                android:layout_marginLeft="10dp"
+                android:layout_marginRight="10dp"
+                android:layout_toLeftOf="@+id/course_textView_time_end"
+                android:layout_toRightOf="@+id/course_textView_time_start"
+                android:thumb="@android:drawable/presence_invisible"
+                android:thumbOffset="0dip" />
+
+            <TextView
+                android:id="@+id/course_textView_time_end"
+                style="@style/width_height_ww"
+                android:layout_alignBaseline="@+id/course_textView_time_start"
+                android:layout_alignBottom="@+id/course_textView_time_start"
+                android:layout_alignParentRight="true"
+                android:layout_marginRight="10dp"
+                android:text="00:00"
+                android:textColor="#FFFFFF" />
+        </RelativeLayout>
+    </RelativeLayout>
+
+</LinearLayout>
